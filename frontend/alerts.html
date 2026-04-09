@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Alerts</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <div id="nav"></div>
+    <div class="card">
+      <h2>Your Alert History</h2>
+      <button class="btn btn-outline" id="reload">Refresh</button>
+      <table class="table" style="margin-top:10px">
+        <thead>
+          <tr><th>Type</th><th>Message</th><th>Risk</th><th>Media</th><th>Time</th></tr>
+        </thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    requireAuth();
+    nav.innerHTML = navHtml();
+
+    async function load() {
+      try {
+        const d = await api('/alerts');
+        tb.innerHTML = d.alerts.length
+          ? d.alerts.map(a => {
+              const media = `${a.image_path ? `<a href="${mediaUrl(a.image_path)}" target="_blank">Image</a>` : ''} ${a.audio_path ? `<a href="${mediaUrl(a.audio_path)}" target="_blank">Audio</a>` : ''}`.trim() || '-';
+              return `<tr><td>${a.type}</td><td>${a.message}</td><td>${a.risk_score || 0} (${a.risk_level || 'Low'})</td><td>${media}</td><td>${a.created_at || '-'}</td></tr>`;
+            }).join('')
+          : '<tr><td colspan="5" class="muted">No alerts yet</td></tr>';
+      } catch (e) {
+        tb.innerHTML = `<tr><td colspan='5'>${e.message}</td></tr>`;
+      }
+    }
+
+    reload.onclick = load;
+    load();
+  </script>
+</body>
+</html>

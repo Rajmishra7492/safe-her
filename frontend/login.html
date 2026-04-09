@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Login</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="card" style="max-width:420px;margin:60px auto">
+      <h2>Login</h2>
+      <form id="loginForm">
+        <div class="row"><label>Email</label><input id="email" type="email" required></div>
+        <div class="row"><label>Password</label><input id="password" type="password" required></div>
+        <button class="btn" type="submit">Login</button>
+      </form>
+      <p id="m" class="msg"></p>
+      <p class="muted">No account? <a href="register.html">Register</a></p>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    const form = document.getElementById("loginForm");
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+    const messageEl = document.getElementById("m");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      try {
+        const data = await api("/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
+          body: JSON.stringify({
+            email: emailInput.value.trim(),
+            password: passwordInput.value,
+          }),
+        });
+
+        saveAuth(data.token, data.user);
+        window.location = "dashboard.html";
+      } catch (err) {
+        setMsg(messageEl, err.message, true);
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Contacts</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <div id="nav"></div>
+
+      <div class="grid">
+        <div class="card">
+          <h2>Add Emergency Contact</h2>
+
+          <form id="f">
+            <div class="row">
+              <label>Name</label>
+              <input id="userName" required />
+            </div>
+
+            <div class="row">
+              <label>Phone</label>
+              <input id="phone" required />
+            </div>
+
+            <div class="row">
+              <label>Relation</label>
+              <input id="relation" />
+            </div>
+
+            <button class="btn" type="submit">Add Contact</button>
+          </form>
+
+          <p id="m" class="msg"></p>
+        </div>
+
+        <div class="card">
+          <h2>Saved Contacts</h2>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Relation</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="tb"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/common.js"></script>
+
+    <script>
+      requireAuth();
+      nav.innerHTML = navHtml();
+
+      async function load() {
+        try {
+          const d = await api("/contacts");
+
+          tb.innerHTML = d.contacts.length
+            ? d.contacts
+                .map(
+                  (c) =>
+                    `<tr>
+                      <td>${c.name}</td>
+                      <td>${c.phone}</td>
+                      <td>${c.relation || "-"}</td>
+                      <td>
+                        <button class='btn btn-danger' onclick='delContact("${c.id}")'>
+                          Delete
+                        </button>
+                      </td>
+                    </tr>`
+                )
+                .join("")
+            : '<tr><td colspan="4" class="muted">No contacts</td></tr>';
+        } catch (e) {
+          tb.innerHTML = `<tr><td colspan='4'>${e.message}</td></tr>`;
+        }
+      }
+
+      async function delContact(id) {
+        if (!confirm("Delete this contact?")) return;
+
+        try {
+          await api(`/contacts/${id}`, { method: "DELETE" });
+          load();
+        } catch (e) {
+          alert(e.message);
+        }
+      }
+
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+
+        const n = document.getElementById("userName").value.trim();
+        const p = document.getElementById("phone").value.trim();
+        const r = document.getElementById("relation").value.trim();
+
+        // ✅ validation fix
+        if (!n || !p) {
+          setMsg(m, "Name and phone are required", true);
+          return;
+        }
+
+        try {
+          await api("/contacts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: n,
+              phone: p,
+              relation: r,
+            }),
+          });
+
+          setMsg(m, "Contact added");
+          f.reset();
+          load();
+
+        } catch (err) {
+          setMsg(m, err.message, true);
+        }
+      };
+
+      load();
+    </script>
+  </body>
+</html>

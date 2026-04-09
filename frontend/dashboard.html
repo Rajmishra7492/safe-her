@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="panic-overlay" id="panicOverlay">PANIC MODE ACTIVE</div>
+
+  <div class="container">
+    <div id="nav"></div>
+
+    <div class="card">
+      <h2 id="welcome">Welcome</h2>
+      <p class="muted">Your personal safety control center.</p>
+      <p id="stats" class="muted">Loading...</p>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <a class="card" href="sos.html"><h3>🚨 SOS Emergency</h3><p class="muted">Send manual SOS with location.</p></a>
+      <a class="card" href="contacts.html"><h3>👥 Emergency Contacts</h3><p class="muted">Add or remove trusted contacts.</p></a>
+      <a class="card" href="report.html"><h3>📝 Report Incident</h3><p class="muted">Submit incident with AI image analysis.</p></a>
+      <a class="card" href="alerts.html"><h3>🔔 Alert History</h3><p class="muted">Track all alerts and risk levels.</p></a>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>⚠️ Panic Mode</h3>
+      <p class="muted">Captures live location, image, and 7 seconds audio, then sends to emergency SOS endpoint.</p>
+      <div class="actions">
+        <button class="btn btn-danger pulse-danger" id="panicBtn">Activate Panic Mode</button>
+      </div>
+      <p id="panicMsg" class="msg"></p>
+      <video id="preview" autoplay muted playsinline style="width:220px;border-radius:10px;display:none;margin-top:10px"></video>
+      <canvas id="snapshot" style="display:none"></canvas>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    requireAuth();
+    nav.innerHTML = navHtml();
+
+    (async () => {
+      try {
+        const d = await api('/dashboard');
+        welcome.textContent = `Welcome, ${d.user.name}`;
+        stats.textContent = `Role: ${d.user.role} | Contacts: ${d.counts.contacts} | Alerts: ${d.counts.alerts} | Incidents: ${d.counts.incidents}`;
+      } catch (e) {
+        stats.textContent = e.message;
+      }
+    })();
+
+    async function getLocation() {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+          () => reject(new Error('Location permission denied'))
+        );
+      });
+    }
+
+    async function startMediaStream() {
+      // Camera and microphone work only on secure contexts: localhost / 127.0.0.1 / https.
+      if (!window.isSecureContext) {
+        throw new Error('Open app on localhost or 127.0.0.1 to use camera and microphone.');
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Browser does not support media devices API.');
+      }
+      return navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    }
+
+    async function captureImageFromStream(stream) {
+      preview.srcObject = stream;
+      preview.style.display = 'block';
+
+      // Wait so the video has a real frame.
+      await new Promise((r) => setTimeout(r, 1200));
+
+      const canvas = snapshot;
+      canvas.width = preview.videoWidth || 640;
+      canvas.height = preview.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
+
+      return new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) return reject(new Error('Unable to capture image.'));
+          resolve(blob);
+        }, 'image/jpeg', 0.85);
+      });
+    }
+
+    async function recordAudioFromStream(stream, seconds = 7) {
+      if (!window.MediaRecorder) {
+        throw new Error('MediaRecorder is not supported in this browser.');
+      }
+
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      // Important: attach onstop BEFORE calling stop.
+      const stopPromise = new Promise((resolve) => {
+        recorder.onstop = () => resolve();
+      });
+
+      recorder.start();
+      await new Promise((r) => setTimeout(r, seconds * 1000));
+      recorder.stop();
+      await stopPromise;
+
+      return new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+    }
+
+    function stopPreviewStream() {
+      if (preview.srcObject) {
+        preview.srcObject.getTracks().forEach((t) => t.stop());
+        preview.srcObject = null;
+      }
+      preview.style.display = 'none';
+    }
+
+    panicBtn.addEventListener('click', async () => {
+      panicOverlay.classList.add('active');
+      panicBtn.disabled = true;
+      setMsg(panicMsg, 'Panic mode started. Collecting data...');
+
+      try {
+        const location = await getLocation();
+        const stream = await startMediaStream();
+
+        const imageBlob = await captureImageFromStream(stream);
+        const audioBlob = await recordAudioFromStream(stream, 7);
+
+        const fd = new FormData();
+        fd.append('latitude', String(location.latitude));
+        fd.append('longitude', String(location.longitude));
+        fd.append('image', imageBlob, 'panic.jpg');
+        fd.append('audio', audioBlob, 'panic.webm');
+
+        const res = await fetch(`${API_BASE}/sos`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${getToken()}` },
+          body: fd,
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'SOS failed');
+
+        setMsg(panicMsg, `SOS sent. Risk: ${data.risk.risk_score} (${data.risk.risk_level})`);
+      } catch (err) {
+        console.error('Panic mode error:', err);
+        alert(`Panic mode failed: ${err.message}`);
+        setMsg(panicMsg, err.message, true);
+      } finally {
+        stopPreviewStream();
+        panicBtn.disabled = false;
+        setTimeout(() => panicOverlay.classList.remove('active'), 1200);
+      }
+    });
+  </script>
+</body>
+</html>

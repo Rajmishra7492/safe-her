@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Admin Panel</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+    <div id="nav"></div>
+
+    <div class="card">
+      <h2>Admin Dashboard</h2>
+      <p id="m" class="msg"></p>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <div class="card"><h3>Counts</h3><pre id="counts" class="muted"></pre></div>
+      <div class="card"><h3>Users</h3><pre id="users" class="muted"></pre></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>SOS Alerts with Risk + Media</h3>
+      <table class="table">
+        <thead><tr><th>User ID</th><th>Type</th><th>Risk</th><th>Image</th><th>Audio</th></tr></thead>
+        <tbody id="alertsTb"></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Incidents</h3>
+      <pre id="incidents" class="muted"></pre>
+    </div>
+  </div>
+
+  <script src="js/common.js"></script>
+  <script>
+    requireAuth();
+    nav.innerHTML = navHtml();
+
+    (async () => {
+      try {
+        const d = await api('/admin');
+        counts.textContent = JSON.stringify(d.counts, null, 2);
+        users.textContent = JSON.stringify(d.users.slice(0, 20), null, 2);
+        incidents.textContent = JSON.stringify(d.incidents.slice(0, 30), null, 2);
+
+        alertsTb.innerHTML = d.alerts.length ? d.alerts.slice(0, 100).map(a =>
+          `<tr>
+            <td>${a.user_id || '-'}</td>
+            <td>${a.type || '-'}</td>
+            <td>${a.risk_score || 0} (${a.risk_level || 'Low'})</td>
+            <td>${a.image_path ? `<a href="${mediaUrl(a.image_path)}" target="_blank">View</a>` : '-'}</td>
+            <td>${a.audio_path ? `<a href="${mediaUrl(a.audio_path)}" target="_blank">Play</a>` : '-'}</td>
+          </tr>`
+        ).join('') : '<tr><td colspan="5" class="muted">No alerts</td></tr>';
+
+        setMsg(m, 'Admin data loaded');
+      } catch (e) {
+        setMsg(m, e.message, true);
+      }
+    })();
+  </script>
+</body>
+</html>
